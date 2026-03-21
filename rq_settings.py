@@ -1,0 +1,1 @@
+WORKER_CLASS = "rq.SimpleWorker"
