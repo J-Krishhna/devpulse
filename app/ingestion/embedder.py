@@ -46,3 +46,4 @@ def embed_query(query: str) -> List[float]:
         normalize_embeddings=True,
     )
     return embedding.tolist()"# test" 
+"# test" 
