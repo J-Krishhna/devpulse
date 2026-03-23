@@ -70,8 +70,21 @@ async def process_push_event(repo_id: str, payload: dict) -> dict:
             except Exception as e:
                 results["errors"].append({"file": file_path, "error": str(e)})
 
+    from app.api.connection_manager import manager
+    summary = (
+        f"Re-indexed {len(results['indexed'])} file(s), "
+        f"removed {len(results['removed'])} file(s)"
+    )
+    await manager.broadcast(repo_id, {
+        "type": "index_progress",
+        "message": summary,
+        "details": results,
+    })
+
     print(f"[worker] done — {results}")
     return results
+
+
 
 
 async def _fetch_file_from_github(repo_id: str, file_path: str, session) -> str | None:

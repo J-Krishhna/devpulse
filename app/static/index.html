@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DevPulse</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    h1 { font-size: 1.4rem; margin-bottom: 24px; color: #58a6ff; }
+
+    #chat {
+      width: 100%;
+      max-width: 760px;
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      font-size: 0.92rem;
+    }
+
+    .user    { background: #1f2937; align-self: flex-end; max-width: 80%; }
+    .answer  { background: #161b22; border: 1px solid #30363d; align-self: flex-start; max-width: 100%; }
+    .system  { background: #0e2a1a; border: 1px solid #238636; color: #3fb950;
+               font-size: 0.82rem; align-self: center; padding: 6px 12px; }
+    .error   { background: #2a0e0e; border: 1px solid #f85149; color: #f85149;
+               font-size: 0.82rem; align-self: center; padding: 6px 12px; }
+
+    #input-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 760px;
+    }
+
+    input {
+      flex: 1;
+      padding: 10px 14px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      font-size: 0.92rem;
+      outline: none;
+    }
+
+    input:focus { border-color: #58a6ff; }
+
+    button {
+      padding: 10px 20px;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.92rem;
+    }
+
+    button:disabled { background: #1a3a22; color: #555; cursor: not-allowed; }
+
+    #status {
+      font-size: 0.75rem;
+      color: #8b949e;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚡ DevPulse</h1>
+  <div id="status">Connecting...</div>
+  <div id="chat"></div>
+  <div id="input-row">
+    <input id="question" type="text" placeholder="Ask about your codebase..." disabled />
+    <button id="send" disabled>Ask</button>
+  </div>
+
+  <script>
+    const REPO_ID = "fSqBuF87gtmuWsUqCjjHw4";
+
+    const chat     = document.getElementById("chat");
+    const input    = document.getElementById("question");
+    const sendBtn  = document.getElementById("send");
+    const statusEl = document.getElementById("status");
+
+    let ws;
+    let currentAnswer = null;
+
+    function connect() {
+      ws = new WebSocket(`ws://localhost:8000/ws/${REPO_ID}`);
+
+      ws.onopen = () => {
+        statusEl.textContent = "Connected";
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === "connected") {
+          statusEl.textContent = `Connected to repo ${msg.repo_id.slice(0, 8)}...`;
+          input.disabled = false;
+          sendBtn.disabled = false;
+
+        } else if (msg.type === "token") {
+          // Append token to current answer bubble
+          if (!currentAnswer) {
+            currentAnswer = document.createElement("div");
+            currentAnswer.className = "message answer";
+            chat.appendChild(currentAnswer);
+          }
+          currentAnswer.textContent += msg.content;
+          chat.scrollTop = chat.scrollHeight;
+
+        } else if (msg.type === "done") {
+          currentAnswer = null;
+          sendBtn.disabled = false;
+          input.disabled = false;
+          input.focus();
+
+        } else if (msg.type === "index_progress") {
+          addMessage(msg.message, "system");
+
+        } else if (msg.type === "error") {
+          addMessage(msg.message, "error");
+          sendBtn.disabled = false;
+          input.disabled = false;
+        }
+      };
+
+      ws.onclose = () => {
+        statusEl.textContent = "Disconnected — reconnecting...";
+        input.disabled = true;
+        sendBtn.disabled = true;
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    function addMessage(text, cls) {
+      const div = document.createElement("div");
+      div.className = `message ${cls}`;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function send() {
+      const question = input.value.trim();
+      if (!question || sendBtn.disabled) return;
+
+      addMessage(question, "user");
+      input.value = "";
+      sendBtn.disabled = true;
+      input.disabled = true;
+      currentAnswer = null;
+
+      ws.send(JSON.stringify({ type: "query", question }));
+    }
+
+    sendBtn.addEventListener("click", send);
+    input.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+
+    connect();
+  </script>
+</body>
+</html>
