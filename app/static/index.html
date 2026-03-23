@@ -109,9 +109,15 @@
     function connect() {
       ws = new WebSocket(`ws://localhost:8000/ws/${REPO_ID}`);
 
-      ws.onopen = () => {
-        statusEl.textContent = "Connected";
-      };
+        ws.onopen = () => {
+            statusEl.textContent = "Connecting...";
+            // ping every 20 seconds to keep connection alive
+            setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "ping" }));
+                }
+            }, 20000);
+        };
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);

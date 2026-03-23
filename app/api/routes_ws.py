@@ -7,39 +7,39 @@ from app.retrieval.hybrid import hybrid_search
 from app.generation.llm import stream_answer
 from app.config import settings
 import asyncio
-import redis
 import json
+from redis.asyncio import Redis as AsyncRedis
 
 router = APIRouter()
 
 
-async def _redis_listener(repo_id: str, websocket: WebSocket):
-    """
-    Runs as a background task for each WebSocket connection.
-    Subscribes to the repo's Redis channel and forwards any
-    index_progress events to the connected client.
-    """
-    r = redis.Redis.from_url(settings.redis_url)
+async def _redis_listener(repo_id: str, websocket: WebSocket, stop_event: asyncio.Event):
+    r = AsyncRedis.from_url(settings.redis_url)
     pubsub = r.pubsub()
-    pubsub.subscribe(f"devpulse:{repo_id}")
+    await pubsub.subscribe(f"devpulse:{repo_id}")
 
     try:
-        while True:
-            message = pubsub.get_message(ignore_subscribe_messages=True)
+        while not stop_event.is_set():
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
             if message and message["type"] == "message":
                 data = json.loads(message["data"])
-                await websocket.send_json(data)
-            await asyncio.sleep(0.1)   # poll every 100ms
-    except Exception:
-        pass
+                try:
+                    await websocket.send_json(data)
+                except Exception:
+                    break
+            await asyncio.sleep(0.05)
     finally:
-        pubsub.unsubscribe()
-        pubsub.close()
+        await pubsub.unsubscribe()
+        await r.aclose()
 
 
 @router.websocket("/ws/{repo_id}")
 async def websocket_endpoint(websocket: WebSocket, repo_id: str):
     await manager.connect(repo_id, websocket)
+    stop_event = asyncio.Event()
+    listener_task = asyncio.create_task(
+        _redis_listener(repo_id, websocket, stop_event)
+    )
 
     try:
         async with async_session() as session:
@@ -52,9 +52,6 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
             return
 
         await websocket.send_json({"type": "connected", "repo_id": repo_id})
-
-        # Start Redis listener as a background task
-        listener_task = asyncio.create_task(_redis_listener(repo_id, websocket))
 
         while True:
             data = await websocket.receive_json()
@@ -71,6 +68,11 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
             async with async_session() as session:
                 chunks = await hybrid_search(session, question, repo_id)
 
+
+            if data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
+
             if not chunks:
                 await websocket.send_json({
                     "type": "error",
@@ -84,5 +86,10 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
             await websocket.send_json({"type": "done"})
 
     except WebSocketDisconnect:
-        manager.disconnect(repo_id, websocket)
+        pass
+    except Exception as e:
+        print(f"[ws] error: {e}")
+    finally:
+        stop_event.set()
         listener_task.cancel()
+        manager.disconnect(repo_id, websocket)

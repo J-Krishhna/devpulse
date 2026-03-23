@@ -18,3 +18,4 @@ ragas
 groq
 websockets
 shortuuid
+redis[asyncio]
