@@ -5,8 +5,36 @@ from app.db.session import async_session
 from app.db.models import Repo
 from app.retrieval.hybrid import hybrid_search
 from app.generation.llm import stream_answer
+from app.config import settings
+import asyncio
+import redis
+import json
 
 router = APIRouter()
+
+
+async def _redis_listener(repo_id: str, websocket: WebSocket):
+    """
+    Runs as a background task for each WebSocket connection.
+    Subscribes to the repo's Redis channel and forwards any
+    index_progress events to the connected client.
+    """
+    r = redis.Redis.from_url(settings.redis_url)
+    pubsub = r.pubsub()
+    pubsub.subscribe(f"devpulse:{repo_id}")
+
+    try:
+        while True:
+            message = pubsub.get_message(ignore_subscribe_messages=True)
+            if message and message["type"] == "message":
+                data = json.loads(message["data"])
+                await websocket.send_json(data)
+            await asyncio.sleep(0.1)   # poll every 100ms
+    except Exception:
+        pass
+    finally:
+        pubsub.unsubscribe()
+        pubsub.close()
 
 
 @router.websocket("/ws/{repo_id}")
@@ -14,7 +42,6 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
     await manager.connect(repo_id, websocket)
 
     try:
-        # Verify repo exists
         async with async_session() as session:
             repo = await session.scalar(
                 select(Repo).where(Repo.id == repo_id)
@@ -26,7 +53,9 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
 
         await websocket.send_json({"type": "connected", "repo_id": repo_id})
 
-        # Main message loop
+        # Start Redis listener as a background task
+        listener_task = asyncio.create_task(_redis_listener(repo_id, websocket))
+
         while True:
             data = await websocket.receive_json()
 
@@ -39,7 +68,6 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
                 await websocket.send_json({"type": "error", "message": "Empty question"})
                 continue
 
-            # Retrieve chunks
             async with async_session() as session:
                 chunks = await hybrid_search(session, question, repo_id)
 
@@ -50,12 +78,11 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
                 })
                 continue
 
-            # Stream tokens back one by one
             async for token in stream_answer(question, chunks):
                 await websocket.send_json({"type": "token", "content": token})
 
-            # Signal completion — frontend uses this to stop the loading state
             await websocket.send_json({"type": "done"})
 
     except WebSocketDisconnect:
         manager.disconnect(repo_id, websocket)
+        listener_task.cancel()
