@@ -71,11 +71,13 @@ async def process_push_event(repo_id: str, payload: dict) -> dict:
                 results["errors"].append({"file": file_path, "error": str(e)})
 
     from app.api.connection_manager import manager
+    print(f"[worker] publishing to devpulse:{repo_id}")
     manager.publish(repo_id, {
         "type": "index_progress",
         "message": f"Re-indexed {len(results['indexed'])} file(s), removed {len(results['removed'])} file(s)",
         "details": results,
     })
+    print(f"[worker] published")
 
     print(f"[worker] done — {results}")
     return results
