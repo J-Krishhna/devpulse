@@ -55,6 +55,9 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
 
         while True:
             data = await websocket.receive_json()
+            if data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+                continue
 
             if data.get("type") != "query":
                 await websocket.send_json({"type": "error", "message": "Unknown message type"})
@@ -69,9 +72,7 @@ async def websocket_endpoint(websocket: WebSocket, repo_id: str):
                 chunks = await hybrid_search(session, question, repo_id)
 
 
-            if data.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
-                continue
+
 
             if not chunks:
                 await websocket.send_json({
