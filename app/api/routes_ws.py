@@ -14,23 +14,31 @@ router = APIRouter()
 
 
 async def _redis_listener(repo_id: str, websocket: WebSocket, stop_event: asyncio.Event):
-    r = AsyncRedis.from_url(settings.redis_url)
-    pubsub = r.pubsub()
-    await pubsub.subscribe(f"devpulse:{repo_id}")
-
     try:
+        r = AsyncRedis.from_url(settings.redis_url)
+        pubsub = r.pubsub()
+        await pubsub.subscribe(f"devpulse:{repo_id}")
+        print(f"[redis_listener] subscribed to devpulse:{repo_id}")
+
         while not stop_event.is_set():
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
             if message and message["type"] == "message":
+                print(f"[redis_listener] got message: {message['data']}")
                 data = json.loads(message["data"])
                 try:
                     await websocket.send_json(data)
-                except Exception:
+                    print(f"[redis_listener] sent to websocket")
+                except Exception as e:
+                    print(f"[redis_listener] websocket send failed: {e}")
                     break
             await asyncio.sleep(0.05)
+
+    except Exception as e:
+        print(f"[redis_listener] crashed: {e}")
     finally:
         await pubsub.unsubscribe()
         await r.aclose()
+        print(f"[redis_listener] closed")
 
 
 @router.websocket("/ws/{repo_id}")
