@@ -1,0 +1,8 @@
+claude/
+__pycache__/
+*.pyc
+.env
+.git/
+eval/query_cache.json
+eval/results.json
+*.egg-info/

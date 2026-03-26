@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     gemini_api_key: str
     github_webhook_secret: str
 
+        # ✅ Add these
+    hf_token: str | None = None
+    huggingfacehub_api_token: str | None = None
+
     class Config:
         env_file = ".env"
 

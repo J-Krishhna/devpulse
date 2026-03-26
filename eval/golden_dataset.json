@@ -1,0 +1,82 @@
+[
+  {
+    "question": "How does the embedding pipeline work?",
+    "ground_truth": "Text chunks are prefixed with an instruction string, then encoded into 768-dimensional float vectors using the BAAI/bge-base-en-v1.5 model. Embeddings are L2-normalized so cosine similarity equals dot product. The model is loaded once at module level as a singleton to avoid reloading on every call."
+  },
+  {
+    "question": "How does DevPulse detect whether a file has changed?",
+    "ground_truth": "Each file's content is hashed with SHA256 and stored in the files table. On re-ingestion, a new hash is computed and compared with the stored one. If they match the file is skipped entirely. If different, old vectors are deleted and the file is re-parsed and re-embedded."
+  },
+  {
+    "question": "Why does the webhook handler return 200 immediately instead of processing inline?",
+    "ground_truth": "GitHub requires a response within 10 seconds or it marks the delivery as failed. Ingestion can take 30-60 seconds for large files. The handler drops a job into the Redis queue via dramatiq and returns 200 immediately. A separate worker process picks up and runs the job asynchronously."
+  },
+  {
+    "question": "What chunking strategy does DevPulse use and why?",
+    "ground_truth": "DevPulse uses AST-based chunking via tree-sitter. Each function and class is extracted as one chunk with exact start and end line numbers. This is better than sliding window chunking because it keeps each chunk semantically complete — a chunk is always a real unit of logic, never a fragment."
+  },
+  {
+    "question": "How are query results ranked before being sent to the LLM?",
+    "ground_truth": "Hybrid search combines vector search and keyword filtering. Vector search retrieves top-20 chunks by cosine similarity using pgvector. Keyword filtering re-scores those results by query term frequency. Reciprocal Rank Fusion merges both ranked lists. The top 5 results are passed to the LLM."
+  },
+  {
+    "question": "How does the WebSocket streaming work?",
+    "ground_truth": "The client connects to /ws/{repo_id}. It sends a JSON message with type query and a question field. The server runs hybrid search, then streams tokens from Groq one by one as JSON messages with type token. A final message with type done signals completion."
+  },
+  {
+    "question": "How does DevPulse handle deleted files in a push event?",
+    "ground_truth": "The worker extracts removed files from the commit payload. For each removed file it deletes all chunks WHERE repo_id matches AND file_path matches, then deletes the file record from the files table. This prevents ghost vectors from deleted code appearing in future search results."
+  },
+  {
+    "question": "What is the fallback when Groq rate limits?",
+    "ground_truth": "If Groq raises a rate limit exception or returns a 429, the system falls back to Gemini 2.0 Flash via Google AI Studio. The fallback uses the same prompt and streams tokens the same way via server-sent events over httpx."
+  },
+  {
+    "question": "How does index progress get broadcast to the browser?",
+    "ground_truth": "The dramatiq worker publishes a JSON message to a Redis pub/sub channel named devpulse:{repo_id}. The FastAPI process runs an async Redis listener per WebSocket connection that polls for messages and forwards them to the connected client as JSON with type index_progress."
+  },
+  {
+    "question": "What database does DevPulse use to store vectors and why?",
+    "ground_truth": "DevPulse uses PostgreSQL with the pgvector extension. This means one database handles both relational metadata and vector search, with ACID guarantees and no separate service to manage. The chunks table has an embedding column of type vector(768) with an ivfflat index for approximate nearest neighbour search."
+  },
+  {
+    "question": "How does the initial index differ from incremental updates?",
+    "ground_truth": "The initial index is triggered manually via ingest_folder and crawls every supported file in the repo. Incremental updates are triggered by GitHub webhook push events and only process files listed in the commit diff. They are completely separate code paths."
+  },
+  {
+    "question": "What does the connection manager do?",
+    "ground_truth": "The ConnectionManager tracks active WebSocket connections per repo in a dictionary mapping repo_id to a list of WebSocket objects. It handles connect, disconnect, and broadcast operations. Broadcast sends a JSON message to all connected clients for a repo and cleans up dead connections."
+  },
+  {
+    "question": "How does DevPulse handle methods inside a class during AST parsing?",
+    "ground_truth": "The AST chunker recurses into class bodies after extracting the class chunk itself. Methods are prefixed with the class name in the format ClassName.method_name. This means both the full class and individual methods are retrievable — the class chunk answers broad questions, method chunks answer specific ones."
+  },
+  {
+    "question": "What embedding model does DevPulse use and what are its properties?",
+    "ground_truth": "DevPulse uses BAAI/bge-base-en-v1.5 via sentence-transformers. It produces 768-dimensional vectors, runs locally on CPU with no API key or cost, and is top-5 on MTEB retrieval benchmarks. It uses asymmetric retrieval — documents and queries get different instruction prefixes."
+  },
+  {
+    "question": "How is the LLM prompt structured?",
+    "ground_truth": "The prompt includes a system instruction telling the model to answer using only the provided context and cite sources by number. Each chunk is formatted with a header showing its file path, function name, and line numbers followed by the raw code. The user question appears at the end."
+  },
+  {
+    "question": "What file types does DevPulse index?",
+    "ground_truth": "DevPulse currently indexes only .py files. The SUPPORTED_EXTENSIONS set in indexer.py controls this. Files with other extensions are returned with status skipped and reason unsupported extension. JavaScript and TypeScript support is planned for Phase 5."
+  },
+  {
+    "question": "How does DevPulse avoid re-embedding unchanged files?",
+    "ground_truth": "The ingest_file function computes a SHA256 hash of the file content and compares it with the stored hash in the files table. If they match and force is False, the function returns immediately with status skipped and reason unchanged. No embedding or database write occurs."
+  },
+  {
+    "question": "What is Reciprocal Rank Fusion and how is it used here?",
+    "ground_truth": "RRF merges two ranked lists by assigning each result a score of 1 divided by k plus its rank, where k is 60. Scores are summed across both lists so results appearing high in both lists score highest. DevPulse uses it to merge vector search results and keyword filtered results before returning the top 5 to the LLM."
+  },
+  {
+    "question": "How are chunks inserted into pgvector?",
+    "ground_truth": "The bulk_insert_chunks function takes a list of chunk dicts, creates SQLAlchemy Chunk model instances from them, adds all to the session with add_all, and commits. Each chunk includes repo_id, file_path, function_name, start_line, end_line, raw_text, and a 768-dimensional embedding vector."
+  },
+  {
+    "question": "What happens when a file is modified in a push event?",
+    "ground_truth": "The worker fetches the new file content from GitHub raw URL. ingest_file computes the SHA256 hash and compares with stored. If different, delete_chunks_by_file removes all old vectors for that file. The file is re-parsed with tree-sitter, re-embedded with BGE, and new chunks are bulk inserted. The file record hash is updated."
+  }
+]

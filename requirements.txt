@@ -19,3 +19,11 @@ groq
 websockets
 shortuuid
 redis[asyncio]
+ragas
+langchain-groq
+langchain-community
+datasets
+langchain-google-genai
+numpy
+instructor
+langchain-huggingface

@@ -1,5 +1,7 @@
 version: '3.8'
+
 services:
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -10,11 +12,58 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://devpulse:devpulse@postgres:5432/devpulse
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - .:/app                    # mount code for --reload to work
+      - model_cache:/root/.cache  # persist BGE model download across rebuilds
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: dramatiq app.workers.ingestion_worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://devpulse:devpulse@postgres:5432/devpulse
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - .:/app
+      - model_cache:/root/.cache  # same cache — model downloaded once, shared
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  model_cache:
