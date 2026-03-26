@@ -46,14 +46,3 @@ def embed_query(query: str) -> List[float]:
         normalize_embeddings=True,
     )
     return embedding.tolist()
-"# test" 
-"# test" 
-"# test2" 
-"# I_LOVe_BALAHARSHINI" 
-"# I_LOVE_BALAHARSHINI" 
-"# I_LOVe_BALAHARSHINIIIIII" 
-"# I_LOVe_BALAHARSHINIIIIII" 
-"# I_LOVE_BALAHARSHINI" 
-"# I_LOVe_BALAHARSHINIIIII" 
-"# I_LOVe_BALAHARSHINIIIIIIIIII" 
-"# I'D_LOVE_TO_TAKE_YOUR_HANDS" 
