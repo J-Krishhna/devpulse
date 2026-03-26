@@ -20,18 +20,12 @@ async def startup_event():
     # Warm up the model on startup so first query isn't slow
     embed_chunks(["warmup"])
 
-from dotenv import load_dotenv
-import os
-
-load_dotenv()  # <-- THIS LINE IS REQUIRED
-
-print("HF TOKEN:", os.getenv("HF_TOKEN")[:10])
 
 @app.get("/")
 async def root():
     """Health check endpoint"""
     return {
-        "message": "Civic Issues Reporting API", 
+        "message": "DevPulse", 
         "version": "1.0.0",
         "status": "running"
     }
